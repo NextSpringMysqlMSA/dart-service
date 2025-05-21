@@ -38,9 +38,35 @@ public class PartnerFinancialRiskService {
     // 여기서는 단기차입금과 장기차입금(별도 항목 가정)을 사용하거나, 자산총계 대비로만 판단
     private static final String ACC_LONG_TERM_BORROWINGS = "장기차입금"; // ifrs-full_LongtermBorrowings
 
-    public FinancialRiskAssessmentDto assessFinancialRisk(String partnerCorpCode, String partnerName, String bsnsYear, String reprtCode) {
-        log.info("파트너사 재무 위험 분석 요청 (DB 조회): 회사코드={}, 회사명={}, 사업연도={}, 보고서코드={}",
-                partnerCorpCode, partnerName, bsnsYear, reprtCode);
+    public FinancialRiskAssessmentDto assessFinancialRisk(String partnerCorpCode, String partnerName) {
+        log.info("파트너사 재무 위험 분석 요청 (DB 조회, 최근 4분기 기준): 회사코드={}, 회사명={}",
+                partnerCorpCode, partnerName);
+
+        // 현재 연도와 최근 보고서 코드 자동 결정
+        java.time.LocalDate today = java.time.LocalDate.now();
+        String currentYear = String.valueOf(today.getYear());
+
+        // 최근 보고서 코드 결정 (분기에 따라)
+        String reprtCode;
+        int month = today.getMonthValue();
+        if (month >= 1 && month < 4) {
+            // 1~3월: 작년 3분기 보고서
+            reprtCode = "11014";
+        } else if (month >= 4 && month < 7) {
+            // 4~6월: 작년 사업보고서
+            reprtCode = "11011";
+        } else if (month >= 7 && month < 10) {
+            // 7~9월: 올해 1분기 보고서
+            reprtCode = "11013";
+        } else {
+            // 10~12월: 올해 반기 보고서
+            reprtCode = "11012";
+        }
+
+        // 사업연도 결정 (분기에 따라)
+        String bsnsYear = (month >= 4 && month < 7) ? String.valueOf(today.getYear() - 1) : currentYear;
+
+        log.info("자동 결정된 분석 기준: 사업연도={}, 보고서코드={}", bsnsYear, reprtCode);
 
         // DB에서 재무제표 데이터 조회
         List<FinancialStatementData> financialStatementItems = 
@@ -50,13 +76,14 @@ public class PartnerFinancialRiskService {
             log.warn("DB에서 회사코드 {} ({}) 에 대한 {}년도 {} 재무 데이터를 찾을 수 없습니다. Kafka 컨슈머가 아직 데이터를 저장하지 않았거나 해당 데이터가 없을 수 있습니다.",
                     partnerCorpCode, partnerName, bsnsYear, reprtCode);
             // 데이터 준비 중 또는 없음을 나타내는 메시지 포함하여 반환
-            Map<String, FinancialRiskAssessmentDto.RiskItemResult> emptyRiskItems = new HashMap<>();
-            emptyRiskItems.put("정보 조회", FinancialRiskAssessmentDto.RiskItemResult.builder()
+            List<FinancialRiskAssessmentDto.NumberedRiskItemResult> emptyRiskItems = new java.util.ArrayList<>();
+            emptyRiskItems.add(FinancialRiskAssessmentDto.NumberedRiskItemResult.numberedBuilder()
                                         .description("재무 정보 조회")
                                         .isAtRisk(true) // 정보 없음을 위험으로 간주할 수도 있음
                                         .actualValue("데이터 없음")
                                         .threshold("-")
                                         .notes("요청된 조건의 재무제표 데이터가 내부 DB에 없습니다. 데이터 동기화 중이거나 아직 제공되지 않은 정보일 수 있습니다. 잠시 후 다시 시도해주세요.")
+                                        .itemNumber(0)
                                         .build());
             return FinancialRiskAssessmentDto.builder()
                     .partnerCompanyId(partnerCorpCode)
@@ -67,21 +94,21 @@ public class PartnerFinancialRiskService {
                     .build();
         }
 
-        Map<String, FinancialRiskAssessmentDto.RiskItemResult> riskItemsResult = new HashMap<>();
-        
-        // 체크리스트 항목별 분석
-        riskItemsResult.put("매출액 30% 이상 감소", checkRevenueDecrease(financialStatementItems));
-        riskItemsResult.put("영업이익 30% 이상 감소", checkOperatingIncomeDecrease(financialStatementItems));
-        riskItemsResult.put("매출채권회전율 3회 이하", checkReceivablesTurnover(financialStatementItems));
-        riskItemsResult.put("매출채권 잔액이 매출액의 50% 이상", checkReceivablesToSalesRatio(financialStatementItems));
-        riskItemsResult.put("매입채무회전율 2회 이하", checkPayablesTurnover(financialStatementItems));
-        riskItemsResult.put("영업손실(적자) 발생", checkOperatingLoss(financialStatementItems));
-        riskItemsResult.put("영업활동 현금흐름 적자", checkOperatingCashflowDeficit(financialStatementItems));
-        riskItemsResult.put("차입금 30% 이상 증가", checkBorrowingsIncrease(financialStatementItems));
-        riskItemsResult.put("차입금이 자산의 50% 이상", checkBorrowingsToAssetsRatio(financialStatementItems));
-        riskItemsResult.put("단기차입금이 전체차입금의 90% 이상", checkShortTermBorrowingsRatio(financialStatementItems));
-        riskItemsResult.put("부채비율 200% 이상", checkDebtToEquityRatio(financialStatementItems));
-        riskItemsResult.put("납입자본금 잠식", checkCapitalImpairment(financialStatementItems));
+        List<FinancialRiskAssessmentDto.NumberedRiskItemResult> riskItemsResult = new java.util.ArrayList<>();
+
+        // 체크리스트 항목별 분석 (번호순으로 정렬)
+        riskItemsResult.add(convertToNumberedResult(checkRevenueDecrease(financialStatementItems), 1, "매출액 30% 이상 감소"));
+        riskItemsResult.add(convertToNumberedResult(checkOperatingIncomeDecrease(financialStatementItems), 2, "영업이익 30% 이상 감소"));
+        riskItemsResult.add(convertToNumberedResult(checkReceivablesTurnover(financialStatementItems), 3, "매출채권회전율 3회 이하"));
+        riskItemsResult.add(convertToNumberedResult(checkReceivablesToSalesRatio(financialStatementItems), 4, "매출채권 잔액이 매출액의 50% 이상"));
+        riskItemsResult.add(convertToNumberedResult(checkPayablesTurnover(financialStatementItems), 5, "매입채무회전율 2회 이하"));
+        riskItemsResult.add(convertToNumberedResult(checkOperatingLoss(financialStatementItems), 6, "영업손실(적자) 발생"));
+        riskItemsResult.add(convertToNumberedResult(checkOperatingCashflowDeficit(financialStatementItems), 7, "영업활동 현금흐름 적자"));
+        riskItemsResult.add(convertToNumberedResult(checkBorrowingsIncrease(financialStatementItems), 8, "차입금 30% 이상 증가"));
+        riskItemsResult.add(convertToNumberedResult(checkBorrowingsToAssetsRatio(financialStatementItems), 9, "차입금이 자산의 50% 이상"));
+        riskItemsResult.add(convertToNumberedResult(checkShortTermBorrowingsRatio(financialStatementItems), 10, "단기차입금이 전체차입금의 90% 이상"));
+        riskItemsResult.add(convertToNumberedResult(checkDebtToEquityRatio(financialStatementItems), 11, "부채비율 200% 이상"));
+        riskItemsResult.add(convertToNumberedResult(checkCapitalImpairment(financialStatementItems), 12, "납입자본금 잠식"));
 
         log.info("파트너사 재무 위험 분석 완료 (DB 기반): 회사명={}", partnerName);
         return FinancialRiskAssessmentDto.builder()
@@ -90,6 +117,18 @@ public class PartnerFinancialRiskService {
                 .assessmentYear(bsnsYear)
                 .reportCode(reprtCode)
                 .riskItems(riskItemsResult)
+                .build();
+    }
+
+    private FinancialRiskAssessmentDto.NumberedRiskItemResult convertToNumberedResult(
+            FinancialRiskAssessmentDto.RiskItemResult result, int itemNumber, String description) {
+        return FinancialRiskAssessmentDto.NumberedRiskItemResult.numberedBuilder()
+                .isAtRisk(result.isAtRisk())
+                .description(description)
+                .actualValue(result.getActualValue())
+                .threshold(result.getThreshold())
+                .notes(result.getNotes())
+                .itemNumber(itemNumber)
                 .build();
     }
 
@@ -131,7 +170,7 @@ public class PartnerFinancialRiskService {
                 .notes(notes)
                 .build();
     }
-    
+
     // 1. 매출액 30% 이상 감소
     private FinancialRiskAssessmentDto.RiskItemResult checkRevenueDecrease(List<FinancialStatementData> items) {
         String desc = "매출액 30% 이상 감소";
@@ -177,7 +216,7 @@ public class PartnerFinancialRiskService {
             return buildResult(desc, threshold, false, "데이터 부족", "영업이익(당기 또는 전기) 정보 없음");
         }
     }
-    
+
     // 3. 매출채권회전율 3회 이하
     private FinancialRiskAssessmentDto.RiskItemResult checkReceivablesTurnover(List<FinancialStatementData> items) {
         String desc = "매출채권회전율 3회 이하";
@@ -303,7 +342,7 @@ public class PartnerFinancialRiskService {
         Optional<BigDecimal> currentShortTermOpt = findFinancialValue(items, ACC_SHORT_TERM_BORROWINGS, "thstrm_amount");
         Optional<BigDecimal> currentLongTermOpt = findFinancialValue(items, ACC_LONG_TERM_BORROWINGS, "thstrm_amount");
         Optional<BigDecimal> totalAssetsOpt = findFinancialValue(items, ACC_TOTAL_ASSETS, "thstrm_amount");
-        
+
         BigDecimal currentTotalBorrowings = sum(currentShortTermOpt, currentLongTermOpt);
 
         if (currentTotalBorrowings.compareTo(BigDecimal.ZERO) >=0 && totalAssetsOpt.isPresent()) {

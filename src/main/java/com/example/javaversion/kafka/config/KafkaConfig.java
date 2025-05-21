@@ -56,7 +56,7 @@ public class KafkaConfig {
         props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
-        props.put(JsonDeserializer.TRUSTED_PACKAGES, "com.example.javaversion.partner.dto");
+        props.put(JsonDeserializer.TRUSTED_PACKAGES, "com.example.javaversion.partner.dto,com.example.javaversion.dart.dto");
         return new DefaultKafkaConsumerFactory<>(props);
     }
 

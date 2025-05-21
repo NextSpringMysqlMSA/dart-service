@@ -10,9 +10,11 @@ import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+@NoArgsConstructor
 @Data
 @JacksonXmlRootElement(localName = "result")
 @Schema(description = "DART API의 corpCode.xml 파일(result 요소 내부에 status/message가 있는 기본 형식)을 매핑하기 위한 DTO")
@@ -44,9 +46,6 @@ public class DartCorpCodeXmlDto {
         private String stockCode;
         @Schema(description = "정보 최종 수정일 (YYYYMMDD 형식)", example = "20230101")
         private String modifyDate;
-
-        public CorpCodeItem() {
-        }
 
         @JsonCreator
         public CorpCodeItem(

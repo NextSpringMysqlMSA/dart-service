@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.List;
 import java.util.Map;
 
 @Data
@@ -25,8 +26,8 @@ public class FinancialRiskAssessmentDto {
     @Schema(description = "분석 기준 보고서 코드 (예: 11011-사업보고서)", example = "11011")
     private String reportCode;
 
-    @Schema(description = "각 재무 위험 항목별 분석 결과 (키: 위험 항목명, 값: 분석 결과 객체)")
-    private Map<String, RiskItemResult> riskItems;
+    @Schema(description = "각 재무 위험 항목별 분석 결과 (번호순으로 정렬된 배열)")
+    private List<NumberedRiskItemResult> riskItems;
 
     @Data
     @Builder
@@ -42,5 +43,19 @@ public class FinancialRiskAssessmentDto {
         private String threshold;   
         @Schema(description = "추가적인 참고사항 또는 계산 근거", example = "전기 매출액: 100억, 당기 매출액: 64.8억", nullable = true)
         private String notes;       
+    }
+
+    @Data
+    @Schema(description = "번호가 부여된 재무 위험 항목 분석 결과")
+    public static class NumberedRiskItemResult extends RiskItemResult {
+        @Schema(description = "위험 항목 번호", example = "1")
+        private int itemNumber;
+
+        @Builder(builderMethodName = "numberedBuilder")
+        public NumberedRiskItemResult(boolean isAtRisk, String description, String actualValue, 
+                                     String threshold, String notes, int itemNumber) {
+            super(isAtRisk, description, actualValue, threshold, notes);
+            this.itemNumber = itemNumber;
+        }
     }
 } 

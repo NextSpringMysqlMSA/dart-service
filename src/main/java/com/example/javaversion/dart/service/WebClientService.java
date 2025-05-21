@@ -20,6 +20,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -109,7 +110,22 @@ public class WebClientService {
      */
     @RateLimiter(name = "dartApi")
     public Mono<CompanyProfileResponse> getCompanyProfile(String corpCode) {
-        log.info("회사 정보 조회 API 호출: {}", corpCode);
+        log.info("[WebClientService] getCompanyProfile 메소드 시작: corpCode={}", corpCode);
+
+        if (webClient == null) {
+            log.error("[WebClientService] webClient가 null입니다! 초기화 실패 가능성. corpCode={}", corpCode);
+            return Mono.error(new IllegalStateException("WebClientService가 제대로 초기화되지 않았습니다."));
+        }
+        if (!StringUtils.hasText(apiKey)) {
+            log.error("[WebClientService] DART API 키가 설정되지 않았습니다. corpCode={}", corpCode);
+            return Mono.error(new IllegalStateException("DART API 키가 설정되지 않았습니다."));
+        }
+        if (!StringUtils.hasText(corpCode)) {
+            log.error("[WebClientService] corpCode가 비어있습니다.");
+            return Mono.error(new IllegalArgumentException("corpCode는 비어있을 수 없습니다."));
+        }
+
+        log.info("회사 정보 조회 API 호출 시작: corpCode={}", corpCode);
 
         String uri = "/api/company.json?crtfc_key=" + apiKey + "&corp_code=" + corpCode;
         log.debug("회사 정보 조회 API 요청 URI: {}", uri);
@@ -122,24 +138,42 @@ public class WebClientService {
                         .queryParam("corp_code", corpCode)
                         .build())
                 .exchangeToMono(response -> {
-                    if (response.statusCode().is2xxSuccessful()) {
-                        return response.bodyToMono(CompanyProfileResponse.class);
-                    } else if (response.statusCode().is4xxClientError()) {
-                        log.error("회사 정보 조회 API 클라이언트 오류: {}, 회사 코드: {}", response.statusCode(), corpCode);
-                        return response.bodyToMono(String.class)
-                            .flatMap(errorBody -> {
-                                log.error("회사 정보 조회 API 오류 응답 본문: {}", errorBody);
-                                return Mono.error(new ResponseStatusException(
-                                    HttpStatus.BAD_REQUEST, "DART API 요청 오류: " + errorBody));
-                            });
+                    HttpStatus responseStatus = (HttpStatus) response.statusCode();
+                    log.info("DART API 응답 수신: corpCode={}, status={}", corpCode, responseStatus);
+
+                    if (responseStatus.is2xxSuccessful()) {
+                        return response.bodyToMono(CompanyProfileResponse.class)
+                            .doOnSuccess(profile -> {
+                                if (profile == null) {
+                                    log.warn("DART API 성공 응답이지만, CompanyProfileResponse가 null입니다. corpCode={}", corpCode);
+                                } else {
+                                    log.info("DART API 성공 응답, CompanyProfileResponse 파싱 완료: corpCode={}", corpCode);
+                                }
+                            })
+                            .doOnError(e -> log.error("DART API 응답 본문 파싱 중 오류 발생: corpCode={}, error={}", corpCode, e.getMessage()));
                     } else {
-                        log.error("회사 정보 조회 API 서버 오류: {}", response.statusCode());
-                        return Mono.error(new ResponseStatusException(
-                                HttpStatus.INTERNAL_SERVER_ERROR, "DART API 서버 오류가 발생했습니다."));
+                        return response.bodyToMono(String.class)
+                            .defaultIfEmpty("[오류 응답 본문 없음]") // 오류 응답 본문이 비어있을 경우를 대비
+                            .flatMap(errorBody -> {
+                                log.error("DART API 오류 응답: corpCode={}, status={}, body={}", corpCode, responseStatus, errorBody);
+                                // 클라이언트 오류(4xx)는 null 대신 에러 Mono 반환하여 실패 전파
+                                // DART API에서 데이터가 없는 경우에도 특정 오류 코드를 줄 수 있으므로, 이를 어떻게 처리할지 결정 필요
+                                // 예를 들어, 404 Not Found 와 유사한 DART API 응답 코드가 있다면, 여기에서 Mono.empty()를 반환하여 처리할 수 있음
+                                // 현재는 모든 비2xx 응답을 에러로 간주
+                                String errorMessage = String.format("DART API 오류: status=%s, body=%s", responseStatus, errorBody);
+                                // return Mono.error(new ResponseStatusException(responseStatus, errorMessage)); // 원본 상태 코드 사용
+                                 return Mono.empty(); // KafkaConsumerService에서 null로 받고 처리하도록, 여기서는 empty() 반환
+                            });
                     }
                 })
                 .timeout(Duration.ofSeconds(timeout))
-                .doOnError(error -> log.error("회사 정보 조회 API 호출 중 오류 발생: {}", error.getMessage(), error));
+                .doOnSubscribe(subscription -> log.info("DART API [company.json] 구독 시작: corpCode={}", corpCode))
+                .doOnCancel(() -> log.warn("DART API [company.json] 요청 취소됨: corpCode={}", corpCode))
+                .doOnError(error -> {
+                    // 네트워크 오류, 타임아웃 등의 경우 여기에 해당
+                    log.error("DART API [company.json] 호출 중 WebClient 오류 발생: corpCode={}, errorClass={}, errorMessage={}", 
+                            corpCode, error.getClass().getSimpleName(), error.getMessage());
+                });
     }
 
     /**

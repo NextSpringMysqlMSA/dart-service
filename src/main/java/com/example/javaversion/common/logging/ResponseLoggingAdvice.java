@@ -17,6 +17,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 import com.example.javaversion.common.exception.ErrorResponse;
 import org.springframework.http.HttpStatus;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.server.ServletServerHttpResponse;
 
 @ControllerAdvice
 @Slf4j
@@ -58,19 +59,16 @@ public class ResponseLoggingAdvice implements ResponseBodyAdvice<Object> {
 
                 if (response instanceof HttpServletResponse httpServletResponse) {
                     statusCode = httpServletResponse.getStatus();
+                } else if (response instanceof ServletServerHttpResponse servletServerHttpResponse) {
+                    statusCode = servletServerHttpResponse.getServletResponse().getStatus();
                 } else {
-                    // HttpServletResponse가 아닌 경우, Spring 5 HttpStatusCode 객체에서 가져오려는 시도 (만약 있다면)
-                    try {
-                        // 이 부분은 ServerHttpResponse의 실제 구현체에 따라 달라질 수 있습니다.
-                        // getStatusCode()가 있다면 해당 값을 사용합니다.
-                        java.lang.reflect.Method getStatusCodeMethod = response.getClass().getMethod("getStatusCode");
-                        Object statusCodeObj = getStatusCodeMethod.invoke(response);
-                        if (statusCodeObj instanceof org.springframework.http.HttpStatusCode) {
-                            statusCode = ((org.springframework.http.HttpStatusCode) statusCodeObj).value();
-                        }
-                    } catch (Exception e) {
-                        log.warn("HttpServletResponse가 아니며, getStatusCode() 메서드를 통해 상태 코드를 가져올 수 없습니다.", e);
-                    }
+                    // HttpServletResponse 또는 ServletServerHttpResponse가 아닌 경우
+                    // 안전하게 상태 코드를 가져올 표준적인 방법이 제한적입니다.
+                    // Spring 6부터 ServerHttpResponse에 getStatusCode()가 추가되었으나,
+                    // 하위 호환성 및 다양한 구현체를 고려하여 여기서는 특정 타입에 의존하지 않습니다.
+                    log.warn("응답 객체 타입({})에서 직접 상태 코드를 가져오기 어렵습니다.", response.getClass().getName());
+                    // 상태 코드를 알 수 없으므로, 오류 여부를 판단하기 어렵습니다.
+                    // 이 경우, body가 ErrorResponse인지 여부로만 오류를 판단합니다.
                 }
 
                 if (statusCode != 0) { // statusCode가 0이 아닌 유효한 값일 때만 HttpStatus로 변환
@@ -81,8 +79,12 @@ public class ResponseLoggingAdvice implements ResponseBodyAdvice<Object> {
                     }
                 }
 
+                // 오류 응답 로깅 강화: statusCode가 0인 경우(알 수 없는 경우)에도 isErrorResponse를 통해 오류 로깅 시도
                 if (isErrorResponse || (status != null && status.isError())) {
-                    log.error("오류 응답 발생: URI={}, 상태코드={}, 응답 본문={}", request.getURI(), statusCode != 0 ? statusCode : "N/A", body);
+                    log.error("오류 응답 발생: URI={}, 상태코드={}, 응답 본문={}", 
+                              request.getURI(), 
+                              statusCode != 0 ? String.valueOf(statusCode) : "알수없음", 
+                              body);
                 } else {
                     String bodyString = body.toString();
                     if (bodyString.length() > 1000) {

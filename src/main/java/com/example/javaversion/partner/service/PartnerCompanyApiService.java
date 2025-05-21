@@ -197,7 +197,7 @@ public class PartnerCompanyApiService {
 
         Page<PartnerCompany> partnerCompaniesPage;
         if (companyName != null && !companyName.isEmpty()) {
-            partnerCompaniesPage = partnerCompanyRepository.findByCompanyNameContainingAndStatus(
+            partnerCompaniesPage = partnerCompanyRepository.findByCompanyNameContainingIgnoreCaseAndStatus(
                     companyName, PartnerCompanyStatus.ACTIVE, pageable);
         } else {
             partnerCompaniesPage = partnerCompanyRepository.findByStatus(PartnerCompanyStatus.ACTIVE, pageable);
@@ -380,5 +380,57 @@ public class PartnerCompanyApiService {
                 .country(partnerCompany.getCountry())
                 .address(partnerCompany.getAddress())
                 .build();
+    }
+
+    /**
+     * 특정 회원이 등록한 파트너 회사 목록을 조회합니다.
+     * 
+     * @param memberId 회원 ID
+     * @param page 페이지 번호 (1부터 시작)
+     * @param pageSize 페이지당 항목 수
+     * @param companyName 회사명 필터 (부분 일치)
+     * @return 페이지네이션을 포함한 파트너 회사 목록
+     */
+    @Transactional(readOnly = true)
+    public PaginatedPartnerCompanyResponseDto findAllPartnerCompaniesByMemberId(String memberId, int page, int pageSize, String companyName) {
+        log.info("회원 ID '{}'의 파트너 회사 목록 조회 요청 - 페이지: {}, 페이지 크기: {}, 회사명 필터: {}", memberId, page, pageSize, companyName);
+
+        // 페이지 번호는 0부터 시작하므로 1을 빼줌
+        Pageable pageable = PageRequest.of(page - 1, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        Page<PartnerCompany> partnerCompaniesPage;
+        if (companyName != null && !companyName.isEmpty()) {
+            partnerCompaniesPage = partnerCompanyRepository.findByMemberIdAndCompanyNameContainingIgnoreCaseAndStatus(
+                    memberId, companyName, PartnerCompanyStatus.ACTIVE, pageable);
+        } else {
+            partnerCompaniesPage = partnerCompanyRepository.findByMemberIdAndStatus(
+                    memberId, PartnerCompanyStatus.ACTIVE, pageable);
+        }
+
+        List<PartnerCompanyResponseDto> partnerCompanies = partnerCompaniesPage.getContent().stream()
+                .map(this::mapToResponseDto)
+                .collect(Collectors.toList());
+
+        return PaginatedPartnerCompanyResponseDto.builder()
+                .data(partnerCompanies)
+                .total(partnerCompaniesPage.getTotalElements())
+                .page(page)
+                .pageSize(pageSize)
+                .build();
+    }
+
+    /**
+     * 시스템에 등록된 모든 활성 상태의 파트너사들의 고유한 회사명 목록을 조회합니다.
+     * 
+     * @return 고유한 파트너사명 목록
+     */
+    @Transactional(readOnly = true)
+    public List<String> getUniqueActivePartnerCompanyNames() {
+        log.info("모든 활성 파트너사의 고유한 회사명 목록 조회 요청");
+        List<PartnerCompany> activeCompanies = partnerCompanyRepository.findByStatus(PartnerCompanyStatus.ACTIVE);
+        return activeCompanies.stream()
+                .map(PartnerCompany::getCompanyName)
+                .distinct()
+                .collect(Collectors.toList());
     }
 } 

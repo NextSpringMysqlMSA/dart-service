@@ -5,19 +5,22 @@
  */
 package com.example.javaversion.config;
 
-import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.CacheManager;
-import org.springframework.cache.caffeine.CaffeineCache;
-import org.springframework.cache.support.SimpleCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
+import org.springframework.cache.caffeine.CaffeineCacheManager;
+import org.springframework.cache.annotation.EnableCaching;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
+import lombok.extern.slf4j.Slf4j;
 
 @Configuration
+@EnableCaching
+@Slf4j
 public class CacheConfig {
 
     @Value("${dart.api.cache.companyProfiles.ttl:3600}")
@@ -38,34 +41,31 @@ public class CacheConfig {
     @Value("${dart.api.cache.dartCorpCodes.maxSize:10000}")
     private int dartCorpCodesMaxSize;
 
+    @Primary
     @Bean
     public CacheManager cacheManager() {
-        SimpleCacheManager cacheManager = new SimpleCacheManager();
+        CaffeineCacheManager cacheManager = new CaffeineCacheManager();
+        log.info("동기 CaffeineCacheManager 생성 및 asyncCacheMode 설정 시도...");
+        cacheManager.setAsyncCacheMode(true);
+        log.info("동기 CaffeineCacheManager asyncCacheMode 설정 완료.");
 
-        CaffeineCache companyProfilesCache = new CaffeineCache("companyProfiles", 
-                Caffeine.newBuilder()
-                    .expireAfterWrite(companyProfilesTtl, TimeUnit.SECONDS)
-                    .maximumSize(companyProfilesMaxSize)
-                    .build());
+        cacheManager.registerCustomCache("companyProfiles", 
+            Caffeine.newBuilder()
+                .expireAfterWrite(companyProfilesTtl, TimeUnit.SECONDS)
+                .maximumSize(companyProfilesMaxSize)
+                .buildAsync());
 
-        CaffeineCache disclosureSearchCache = new CaffeineCache("disclosureSearch", 
-                Caffeine.newBuilder()
-                    .expireAfterWrite(disclosureSearchTtl, TimeUnit.SECONDS)
-                    .maximumSize(disclosureSearchMaxSize)
-                    .build());
+        cacheManager.registerCustomCache("disclosureSearch", 
+            Caffeine.newBuilder()
+                .expireAfterWrite(disclosureSearchTtl, TimeUnit.SECONDS)
+                .maximumSize(disclosureSearchMaxSize)
+                .buildAsync());
 
-        CaffeineCache dartCorpCodesCache = new CaffeineCache("dartCorpCodes", 
-                Caffeine.newBuilder()
-                    .expireAfterWrite(dartCorpCodesTtl, TimeUnit.SECONDS) 
-                    .maximumSize(dartCorpCodesMaxSize)
-                    .build());
-
-        cacheManager.setCaches(Arrays.asList(
-                companyProfilesCache, 
-                disclosureSearchCache,
-                dartCorpCodesCache
-        ));
-
+        cacheManager.registerCustomCache("dartCorpCodes", 
+            Caffeine.newBuilder()
+                .expireAfterWrite(dartCorpCodesTtl, TimeUnit.SECONDS)
+                .maximumSize(dartCorpCodesMaxSize)
+                .buildAsync());
         return cacheManager;
     }
 } 

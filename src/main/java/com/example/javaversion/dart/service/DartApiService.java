@@ -222,14 +222,35 @@ public class DartApiService {
 
     /**
      * DART API에서 회사 정보를 조회합니다.
+     * CacheService를 사용하여 프로그래밍 방식으로 캐싱합니다.
      *
      * @param corpCode 회사 코드
      * @return 회사 정보 응답 Mono
      */
-    @Cacheable(value = "companyProfiles", key = "#corpCode")
     public Mono<CompanyProfileResponse> getCompanyProfile(String corpCode) {
-        log.info("회사 정보 조회 API 호출: {}", corpCode);
-        return webClientService.getCompanyProfile(corpCode);
+        log.info("회사 정보 조회 API 호출 (프로그래밍 방식 캐싱): {}", corpCode);
+
+        String cacheName = "companyProfiles";
+
+        // 1. 캐시에서 먼저 조회 (동기 호출을 Reactive 스트림으로 감싸기)
+        return Mono.fromCallable(() -> cacheService.get(cacheName, corpCode))
+            .flatMap(cachedValue -> {
+                if (cachedValue instanceof CompanyProfileResponse) {
+                    log.info("캐시 히트: key={}", corpCode);
+                    return Mono.just((CompanyProfileResponse) cachedValue);
+                }
+                log.info("캐시에 '{}' 키에 대한 회사 정보 없음 또는 타입 불일치. API 직접 호출: {}", corpCode, corpCode);
+                // 2. 캐시에 없으면 API 호출
+                return webClientService.getCompanyProfile(corpCode)
+                    .doOnSuccess(profile -> {
+                        if (profile != null) {
+                            // 3. API 호출 성공 시 캐시에 저장 (동기 호출)
+                            cacheService.put(cacheName, corpCode, profile);
+                            log.info("API 응답을 캐시에 저장: key={}, value={}", corpCode, profile);
+                        }
+                    });
+            })
+            .doOnError(error -> log.error("회사 정보 조회 중 오류 발생: corpCode={}", corpCode, error));
     }
 
     /**

@@ -34,6 +34,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import reactor.core.publisher.Mono;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -87,15 +89,14 @@ public class KafkaConsumerService {
     /**
      * 파트너 회사 토픽에서 메시지를 소비합니다.
      *
-     * @param message 수신된 메시지
+     * @param partnerCompanyDto 수신된 메시지
      */
     @KafkaListener(topics = "${kafka.topic.partner-company}", groupId = "${spring.kafka.consumer.group-id}")
     @Transactional
-    public void consumePartnerCompany(String message) {
-        log.info("파트너 회사 메시지 수신: {}", message);
+    public void consumePartnerCompany(PartnerCompanyResponseDto partnerCompanyDto) {
+        log.info("파트너 회사 DTO 메시지 수신: {}", partnerCompanyDto);
         try {
-            PartnerCompanyResponseDto partnerCompanyDto = objectMapper.readValue(message, PartnerCompanyResponseDto.class);
-            log.info("파트너 회사 메시지 변환 완료: ID={}, 회사명={}, 고유번호={}", 
+            log.info("파트너 회사 메시지 자동 변환 완료: ID={}, 회사명={}, 고유번호={}", 
                      partnerCompanyDto.getId(), partnerCompanyDto.getCorpName(), partnerCompanyDto.getCorpCode());
 
             partnerCompanyRepository.findById(partnerCompanyDto.getId()).ifPresentOrElse(
@@ -111,7 +112,7 @@ public class KafkaConsumerService {
 
                 if (companyProfile != null) {
                     retrieveAndSaveDisclosures(corpCode, companyProfile);
-                    
+
                     retrieveAndSaveRecentFinancialStatements(corpCode);
                 } else {
                     log.warn("회사 프로필 정보를 가져오거나 생성할 수 없어 DART 연동 중단: corpCode={}", corpCode);
@@ -125,23 +126,61 @@ public class KafkaConsumerService {
             log.error("파트너 회사 메시지 처리 중 심각한 오류 발생", e);
         }
     }
-    
+
     private CompanyProfile saveOrUpdateCompanyProfileByCorpCode(String corpCode) {
         try {
-            log.info("DART API를 통해 회사 정보 조회 시도: corpCode={}", corpCode);
-            CompanyProfileResponse profileResponse = dartApiService.getCompanyProfile(corpCode).block();
-
-            if (profileResponse != null && "000".equals(profileResponse.getStatus())) {
-                log.info("DART API에서 회사 정보 조회 성공: {}", profileResponse.getCorpName());
-                return saveOrUpdateCompanyProfile(profileResponse);
-            } else {
-                log.warn("DART API에서 회사 정보를 찾을 수 없거나 오류 발생: corpCode={}, status={}, message={}", 
-                         corpCode, profileResponse != null ? profileResponse.getStatus() : "N/A", 
-                         profileResponse != null ? profileResponse.getMessage() : "Response is null");
-                return null;
+            // 먼저 DB에서 회사 프로필이 이미 존재하는지 확인
+            Optional<CompanyProfile> existingProfile = companyProfileRepository.findById(corpCode);
+            if (existingProfile.isPresent()) {
+                log.info("DB에서 기존 회사 프로필 정보 발견: corpCode={}, corpName={}", 
+                        corpCode, existingProfile.get().getCorpName());
+                return existingProfile.get();
             }
+
+            log.info("DART API를 통해 회사 정보 조회 시도 (transform 사용): corpCode={}", corpCode);
+
+            java.util.function.Function<Mono<CompanyProfileResponse>, Mono<CompanyProfile>> processApiResponse =
+                apiResponseMono -> apiResponseMono
+                    .flatMap(profileResponse -> {
+                        if ("000".equals(profileResponse.getStatus())) {
+                            log.info("DART API 성공 (transform): {}", profileResponse.getCorpName());
+                            return Mono.just(saveOrUpdateCompanyProfile(profileResponse));
+                        } else {
+                            log.warn("DART API 오류 또는 데이터 없음 (transform - 응답은 받았으나 status 불일치): corpCode={}, status={}, message={}",
+                                     corpCode, profileResponse.getStatus(), profileResponse.getMessage());
+                            return Mono.<CompanyProfile>empty();
+                        }
+                    })
+                    .switchIfEmpty(Mono.defer(() -> {
+                        log.warn("DART API 응답이 비어있음 (transform - switchIfEmpty): corpCode={}", corpCode);
+                        return Mono.<CompanyProfile>empty();
+                    }))
+                    .onErrorResume(e -> {
+                        log.error("DART API 처리 중 예외 발생 (transform - onErrorResume): corpCode={}", corpCode, e);
+                        return Mono.<CompanyProfile>empty();
+                    });
+
+            Optional<CompanyProfile> profileOptional = dartApiService.getCompanyProfile(corpCode)
+                .transform(processApiResponse)
+                .blockOptional();
+
+            if (profileOptional.isPresent()) {
+                return profileOptional.get();
+            } else {
+                // DART API에서 정보를 가져오지 못한 경우, 기본 프로필 생성
+                log.info("DART API에서 정보를 가져오지 못해 기본 회사 프로필 생성: corpCode={}", corpCode);
+                LocalDateTime now = LocalDateTime.now();
+                CompanyProfile defaultProfile = CompanyProfile.builder()
+                        .corpCode(corpCode)
+                        .corpName("기본 회사명_" + corpCode) // 기본 회사명 (필수 필드)
+                        .createdAt(now)
+                        .updatedAt(now)
+                        .build();
+                return companyProfileRepository.save(defaultProfile);
+            }
+
         } catch (Exception e) {
-            log.error("DART API 회사 정보 조회 중 예외 발생: corpCode={}", corpCode, e);
+            log.error("saveOrUpdateCompanyProfileByCorpCode 메소드 실행 중 예상치 못한 예외 발생: corpCode={}", corpCode, e);
             return null;
         }
     }

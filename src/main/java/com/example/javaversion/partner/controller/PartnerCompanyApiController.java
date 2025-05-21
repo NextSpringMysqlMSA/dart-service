@@ -116,14 +116,17 @@ public class PartnerCompanyApiController {
     }
 
     @GetMapping("/partner-companies")
-    @Operation(summary = "파트너사 목록 조회 (페이지네이션)", description = "시스템에 등록된 활성(ACTIVE) 상태의 파트너사 목록을 페이지네이션하여 조회합니다. 회사명으로 필터링할 수 있습니다.")
+    @Operation(summary = "특정 사용자의 파트너사 목록 조회 (페이지네이션)", description = "X-Member-Id 헤더로 전달된 사용자가 등록한 활성(ACTIVE) 상태의 파트너사 목록을 페이지네이션하여 조회합니다. 회사명으로 필터링할 수 있습니다.")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "페이지네이션을 포함한 파트너사 목록입니다.",
                 content = @Content(mediaType = "application/json", schema = @Schema(implementation = PaginatedPartnerCompanyResponseDto.class))),
-        @ApiResponse(responseCode = "400", description = "잘못된 페이지네이션 파라미터"),
+        @ApiResponse(responseCode = "400", description = "잘못된 페이지네이션 파라미터 또는 X-Member-Id 헤더 누락"),
         @ApiResponse(responseCode = "500", description = "서버 내부 오류")
     })
     public ResponseEntity<PaginatedPartnerCompanyResponseDto> findAllPartnerCompanies(
+            @Parameter(description = "파트너사를 조회하는 회원의 ID (요청 헤더 X-Member-Id로 전달)", required = true, example = "user-member-uuid")
+            @RequestHeader("X-Member-Id") String memberId,
+
             @Parameter(description = "조회할 페이지 번호 (1부터 시작)", example = "1") 
             @RequestParam(defaultValue = "1") int page,
 
@@ -133,9 +136,22 @@ public class PartnerCompanyApiController {
             @Parameter(description = "검색할 회사명 (부분 일치, 대소문자 구분 없음)") 
             @RequestParam(required = false) String companyName) {
 
-        log.info("파트너사 목록 조회 API 요청 - 페이지: {}, 페이지 크기: {}, 회사명 필터: {}", page, pageSize, companyName);
+        log.info("파트너사 목록 조회 API 요청 - 회원 ID: {}, 페이지: {}, 페이지 크기: {}, 회사명 필터: {}", memberId, page, pageSize, companyName);
         PaginatedPartnerCompanyResponseDto response = 
-                partnerCompanyApiService.findAllPartnerCompanies(page, pageSize, companyName);
+                partnerCompanyApiService.findAllPartnerCompaniesByMemberId(memberId, page, pageSize, companyName);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/unique-partner-companies")
+    @Operation(summary = "모든 고유 파트너사명 목록 조회", description = "시스템에 등록된 모든 활성(ACTIVE) 상태의 파트너사들의 고유한 회사명 목록을 조회합니다. 사용자 ID와 무관합니다.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "고유한 파트너사명 목록입니다.",
+                content = @Content(mediaType = "application/json", schema = @Schema(type = "array", implementation = String.class))),
+        @ApiResponse(responseCode = "500", description = "서버 내부 오류")
+    })
+    public ResponseEntity<java.util.List<String>> getUniquePartnerCompanyNames() {
+        log.info("고유 파트너사명 목록 조회 API 요청");
+        java.util.List<String> response = partnerCompanyApiService.getUniqueActivePartnerCompanyNames();
         return ResponseEntity.ok(response);
     }
 
@@ -196,7 +212,7 @@ public class PartnerCompanyApiController {
     }
 
     @GetMapping("/partner-companies/{partnerCorpCode}/financial-risk")
-    @Operation(summary = "파트너사 재무 위험 분석 (DB 기반)", description = "내부 데이터베이스에 저장된 특정 파트너사의 재무제표 데이터를 기반으로 재무 위험을 분석합니다. 분석 대상 연도와 보고서 코드를 지정해야 합니다.")
+    @Operation(summary = "파트너사 재무 위험 분석 (DB 기반)", description = "내부 데이터베이스에 저장된 특정 파트너사의 재무제표 데이터를 기반으로 최근 4분기(1년) 기준으로 재무 위험을 분석합니다.")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "재무 위험 분석 결과입니다.",
                 content = @Content(mediaType = "application/json", schema = @Schema(implementation = FinancialRiskAssessmentDto.class))),
@@ -207,22 +223,17 @@ public class PartnerCompanyApiController {
             @Parameter(description = "재무 위험을 분석할 파트너사의 DART 고유번호 (8자리 숫자)", required = true, example = "00126380") 
             @PathVariable String partnerCorpCode,
             @Parameter(description = "파트너사명 (결과 표시에 사용, 필수는 아님)") 
-            @RequestParam(required = false) String partnerName,
-            @Parameter(description = "분석 대상 사업연도 (YYYY 형식)", required = true, example = "2023") 
-            @RequestParam String bsnsYear,
-            @Parameter(description = "분석 대상 보고서 코드 (예: 11011-사업보고서, 11012-반기보고서, 11013-1분기보고서, 11014-3분기보고서)", required = true, example = "11011") 
-            @RequestParam String reprtCode) {
+            @RequestParam(required = false) String partnerName) {
 
-        log.info("파트너사 재무 위험 분석 API 요청: 회사코드={}, 사업연도={}, 보고서코드={}", 
-                partnerCorpCode, bsnsYear, reprtCode);
-        
+        log.info("파트너사 재무 위험 분석 API 요청: 회사코드={}", partnerCorpCode);
+
         // 실제 파트너사명은 partnerCorpCode로 DB 등에서 조회하거나, partnerName 파라미터를 활용할 수 있습니다.
         // 여기서는 간결성을 위해 partnerName 파라미터를 그대로 사용하거나, corpCode로 대체합니다.
         String displayName = (partnerName != null && !partnerName.isEmpty()) ? partnerName : partnerCorpCode;
 
         FinancialRiskAssessmentDto assessment = 
-            partnerFinancialRiskService.assessFinancialRisk(partnerCorpCode, displayName, bsnsYear, reprtCode);
-        
+            partnerFinancialRiskService.assessFinancialRisk(partnerCorpCode, displayName);
+
         return ResponseEntity.ok(assessment);
     }
 } 
