@@ -123,7 +123,7 @@ public class PartnerCompanyApiController {
         @ApiResponse(responseCode = "400", description = "잘못된 페이지네이션 파라미터 또는 X-Member-Id 헤더 누락"),
         @ApiResponse(responseCode = "500", description = "서버 내부 오류")
     })
-    public ResponseEntity<PaginatedPartnerCompanyResponseDto> findAllPartnerCompanies(
+    public ResponseEntity<PaginatedPartnerCompanyResponseDto>  findAllPartnerCompanies(
             @Parameter(description = "파트너사를 조회하는 회원의 ID (요청 헤더 X-Member-Id로 전달)", required = true, example = "user-member-uuid")
             @RequestHeader("X-Member-Id") String memberId,
 
