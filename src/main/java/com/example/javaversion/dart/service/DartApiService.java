@@ -95,15 +95,22 @@ public class DartApiService {
      */
     @Transactional
     public Mono<Void> fetchAndStoreCorpCodes() {
+        long existingCount = dartCorpCodeRepository.count();
+        if (existingCount > 0) {
+            log.info("기업 코드가 이미 DB에 존재함 (총 {}건) - 다운로드 및 저장 생략", existingCount);
+            return Mono.empty(); // 이미 존재하면 무시
+        }
+
         log.info("DART API로부터 기업 코드 다운로드 및 저장을 시작합니다...");
 
         return webClientService.downloadCorpCodeZip()
-            .transform(zipExtractorService::extractXmlFromZip)
-            .map(xmlParserService::parseCorpCodeXml)
-            .flatMap(this::processCorpCodeParseResult)
-            .doOnError(error -> log.error("기업 코드 처리 중 오류 발생: {}", error.getMessage(), error))
-            .then();
+                .transform(zipExtractorService::extractXmlFromZip)
+                .map(xmlParserService::parseCorpCodeXml)
+                .flatMap(this::processCorpCodeParseResult)
+                .doOnError(error -> log.error("기업 코드 처리 중 오류 발생: {}", error.getMessage(), error))
+                .then();
     }
+
 
     /**
      * XML 파싱 결과를 처리하여 기업 코드를 데이터베이스에 저장합니다.

@@ -42,7 +42,8 @@ kafka:
 resilience4j:
   ratelimiter:
     instances:
-      dartApi: # WebClientService에서 사용한 RateLimiter 이름
+      dartApi:
+        # WebClientService에서 사용한 RateLimiter 이름
         limitForPeriod: 10 # 기간 내 허용 호출 수
         limitRefreshPeriod: 1s # 제한 초기화 주기 (예: 1s, 500ms)
         timeoutDuration: 1s # 요청 대기 시간
