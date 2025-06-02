@@ -104,7 +104,7 @@ public class PartnerCompanyApiController {
     })
     public ResponseEntity<PartnerCompanyResponseDto> createPartnerCompany(
             @Parameter(description = "파트너사를 등록하는 회원의 ID (요청 헤더 X-Member-Id로 전달)", required = true, example = "user-member-uuid") 
-            @RequestHeader("X-Member-Id") String memberId,
+            @RequestHeader("X-MEMBER-ID") String memberId,
 
             @Parameter(description = "등록할 파트너사의 정보", required = true, 
                        schema = @Schema(implementation = CreatePartnerCompanyDto.class)) 
@@ -125,7 +125,7 @@ public class PartnerCompanyApiController {
     })
     public ResponseEntity<PaginatedPartnerCompanyResponseDto>  findAllPartnerCompanies(
             @Parameter(description = "파트너사를 조회하는 회원의 ID (요청 헤더 X-Member-Id로 전달)", required = true, example = "user-member-uuid")
-            @RequestHeader("X-Member-Id") String memberId,
+            @RequestHeader("X-MEMBER-ID") String memberId,
 
             @Parameter(description = "조회할 페이지 번호 (1부터 시작)", example = "1") 
             @RequestParam(defaultValue = "1") int page,
