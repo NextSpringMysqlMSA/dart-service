@@ -31,8 +31,9 @@ import lombok.NoArgsConstructor;
 public class PartnerCompanyResponseDto {
     
     @Schema(description = "파트너사 레코드의 고유 ID (UUID 형식)", example = "a1b2c3d4-e5f6-7890-1234-567890abcdef", requiredMode = Schema.RequiredMode.REQUIRED)
-    private UUID id;
-    
+    private String id;
+
+
     @JsonProperty("corp_code")
     @Schema(description = "DART 기업 고유번호 (8자리). 파트너사가 DART에 등록된 경우 제공됩니다.", example = "00123456", nullable = true)
     private String corpCode;

@@ -122,25 +122,30 @@ public class PartnerCompanyApiService {
     public PartnerCompanyResponseDto createPartnerCompany(CreatePartnerCompanyDto createDto, String memberId) {
         log.info("파트너 회사 생성 요청 - 회사명: {}, 회원 ID: {}", createDto.getCompanyName(), memberId);
 
-        // DART API에서 추가 정보 조회
-        String stockCode = null;
+        // 프론트엔드에서 제공된 stockCode 우선 사용
+        String stockCode = createDto.getStockCode();
         String finalCorpCode = createDto.getCorpCode();
 
-        try {
-            CompanyProfileResponse dartProfile = dartApiService.getCompanyProfile(createDto.getCorpCode()).block();
-            if (dartProfile != null) {
-                log.info("DART API에서 회사 정보 조회 성공 - 회사명: {}", dartProfile.getCorpName());
-                stockCode = dartProfile.getStockCode();
+        // stockCode가 제공되지 않았거나 비어있는 경우 DART API에서 조회
+        if (stockCode == null || stockCode.trim().isEmpty()) {
+            try {
+                CompanyProfileResponse dartProfile = dartApiService.getCompanyProfile(createDto.getCorpCode()).block();
+                if (dartProfile != null) {
+                    log.info("DART API에서 회사 정보 조회 성공 - 회사명: {}", dartProfile.getCorpName());
+                    stockCode = dartProfile.getStockCode();
 
-                // DART API에서 반환한 corpCode가 다른 경우 업데이트
-                if (dartProfile.getCorpCode() != null && !dartProfile.getCorpCode().equals(finalCorpCode)) {
-                    log.info("DART API에서 반환한 corpCode({})가 요청한 corpCode({})와 다릅니다. DART API 값을 사용합니다.", 
-                            dartProfile.getCorpCode(), finalCorpCode);
-                    finalCorpCode = dartProfile.getCorpCode();
+                    // DART API에서 반환한 corpCode가 다른 경우 업데이트
+                    if (dartProfile.getCorpCode() != null && !dartProfile.getCorpCode().equals(finalCorpCode)) {
+                        log.info("DART API에서 반환한 corpCode({})가 요청한 corpCode({})와 다릅니다. DART API 값을 사용합니다.", 
+                                dartProfile.getCorpCode(), finalCorpCode);
+                        finalCorpCode = dartProfile.getCorpCode();
+                    }
                 }
+            } catch (Exception e) {
+                log.warn("DART API 호출 중 오류 발생: {}", e.getMessage());
             }
-        } catch (Exception e) {
-            log.warn("DART API 호출 중 오류 발생: {}", e.getMessage());
+        } else {
+            log.info("프론트엔드에서 제공된 주식코드 사용: {}", stockCode);
         }
 
         // 파트너 회사 엔티티 생성
@@ -192,8 +197,15 @@ public class PartnerCompanyApiService {
     public PaginatedPartnerCompanyResponseDto findAllPartnerCompanies(int page, int pageSize, String companyName) {
         log.info("파트너 회사 목록 조회 요청 - 페이지: {}, 페이지 크기: {}, 회사명 필터: {}", page, pageSize, companyName);
 
-        // 페이지 번호는 0부터 시작하므로 1을 빼줌
-        Pageable pageable = PageRequest.of(page - 1, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        // 페이지 번호 검증 및 보정
+        int validPage = Math.max(1, page);
+        int validPageSize = Math.max(1, Math.min(100, pageSize));
+        
+        log.debug("검증된 페이지 파라미터 - 원본: page={}, pageSize={} -> 보정: page={}, pageSize={}", 
+                page, pageSize, validPage, validPageSize);
+
+        // 페이지 번호는 0부터 시작하므로 1을 빼줌 (이제 항상 0 이상이 보장됨)
+        Pageable pageable = PageRequest.of(validPage - 1, validPageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         Page<PartnerCompany> partnerCompaniesPage;
         if (companyName != null && !companyName.isEmpty()) {
@@ -210,8 +222,8 @@ public class PartnerCompanyApiService {
         return PaginatedPartnerCompanyResponseDto.builder()
                 .data(partnerCompanies)
                 .total(partnerCompaniesPage.getTotalElements())
-                .page(page)
-                .pageSize(pageSize)
+                .page(validPage)
+                .pageSize(validPageSize)
                 .build();
     }
 
@@ -223,7 +235,7 @@ public class PartnerCompanyApiService {
      * @throws ResponseStatusException 파트너 회사를 찾을 수 없는 경우
      */
     @Transactional(readOnly = true)
-    public PartnerCompanyResponseDto findPartnerCompanyById(UUID id) {
+    public PartnerCompanyResponseDto findPartnerCompanyById(String id) {
         log.info("파트너 회사 조회 요청 - ID: {}", id);
 
         PartnerCompany partnerCompany = partnerCompanyRepository.findByIdAndStatus(id, PartnerCompanyStatus.ACTIVE)
@@ -242,18 +254,24 @@ public class PartnerCompanyApiService {
      * @throws ResponseStatusException 파트너 회사를 찾을 수 없는 경우
      */
     @Transactional
-    public PartnerCompanyResponseDto updatePartnerCompany(UUID id, UpdatePartnerCompanyDto updateDto) {
+    public PartnerCompanyResponseDto updatePartnerCompany(String id, UpdatePartnerCompanyDto updateDto) {
         log.info("파트너 회사 업데이트 요청 - ID: {}", id);
 
         PartnerCompany partnerCompany = partnerCompanyRepository.findByIdAndStatus(id, PartnerCompanyStatus.ACTIVE)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, 
                         String.format("ID '%s'에 해당하는 파트너사를 찾을 수 없습니다.", id)));
 
-        // DART API에서 추가 정보 조회 (corpCode가 변경된 경우)
+        // 주식코드 업데이트 로직
         String stockCode = partnerCompany.getStockCode();
         String finalCorpCode = updateDto.getCorpCode() != null ? updateDto.getCorpCode() : partnerCompany.getCorpCode();
 
-        if (updateDto.getCorpCode() != null && !updateDto.getCorpCode().equals(partnerCompany.getCorpCode())) {
+        // 프론트엔드에서 stockCode가 명시적으로 제공된 경우 우선 사용
+        if (updateDto.getStockCode() != null) {
+            stockCode = updateDto.getStockCode();
+            log.info("프론트엔드에서 제공된 주식코드로 업데이트: {}", stockCode);
+        }
+        // corpCode가 변경된 경우 DART API에서 새로운 정보 조회
+        else if (updateDto.getCorpCode() != null && !updateDto.getCorpCode().equals(partnerCompany.getCorpCode())) {
             try {
                 CompanyProfileResponse dartProfile = dartApiService.getCompanyProfile(updateDto.getCorpCode()).block();
                 if (dartProfile != null) {
@@ -319,7 +337,7 @@ public class PartnerCompanyApiService {
      * @throws ResponseStatusException 파트너 회사를 찾을 수 없는 경우
      */
     @Transactional
-    public Map<String, String> deletePartnerCompany(UUID id) {
+    public Map<String, String> deletePartnerCompany(String id) {
         log.info("파트너 회사 삭제 요청 - ID: {}", id);
 
         PartnerCompany partnerCompany = partnerCompanyRepository.findByIdAndStatus(id, PartnerCompanyStatus.ACTIVE)
@@ -395,8 +413,15 @@ public class PartnerCompanyApiService {
     public PaginatedPartnerCompanyResponseDto findAllPartnerCompaniesByMemberId(String memberId, int page, int pageSize, String companyName) {
         log.info("회원 ID '{}'의 파트너 회사 목록 조회 요청 - 페이지: {}, 페이지 크기: {}, 회사명 필터: {}", memberId, page, pageSize, companyName);
 
-        // 페이지 번호는 0부터 시작하므로 1을 빼줌
-        Pageable pageable = PageRequest.of(page - 1, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        // 페이지 번호 검증 및 보정
+        int validPage = Math.max(1, page);
+        int validPageSize = Math.max(1, Math.min(100, pageSize));
+        
+        log.debug("검증된 페이지 파라미터 - 원본: page={}, pageSize={} -> 보정: page={}, pageSize={}", 
+                page, pageSize, validPage, validPageSize);
+
+        // 페이지 번호는 0부터 시작하므로 1을 빼줌 (이제 항상 0 이상이 보장됨)
+        Pageable pageable = PageRequest.of(validPage - 1, validPageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         Page<PartnerCompany> partnerCompaniesPage;
         if (companyName != null && !companyName.isEmpty()) {
@@ -414,8 +439,8 @@ public class PartnerCompanyApiService {
         return PaginatedPartnerCompanyResponseDto.builder()
                 .data(partnerCompanies)
                 .total(partnerCompaniesPage.getTotalElements())
-                .page(page)
-                .pageSize(pageSize)
+                .page(validPage)
+                .pageSize(validPageSize)
                 .build();
     }
 

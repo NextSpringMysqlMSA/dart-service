@@ -40,4 +40,8 @@ public class CreatePartnerCompanyDto {
     @NotNull(message = "계약 시작일은 필수 입력 항목입니다.")
     @Schema(description = "파트너사와의 계약 시작일 (YYYY-MM-DD 형식)", example = "2023-01-01", requiredMode = Schema.RequiredMode.REQUIRED)
     private LocalDate contractStartDate;
+    
+    @Size(max = 10, message = "주식 코드는 최대 10자까지 입력 가능합니다.")
+    @Schema(description = "주식 코드 (선택사항, DART API에서 자동으로 조회되지만 수동으로도 설정 가능)", example = "005930", nullable = true)
+    private String stockCode;
 }

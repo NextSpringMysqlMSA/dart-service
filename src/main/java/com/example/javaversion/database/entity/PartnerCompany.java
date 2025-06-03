@@ -44,12 +44,12 @@ import lombok.AllArgsConstructor;
 
 @Entity
 @Table(
-    name = "partner_companies",
-    indexes = {
-        @Index(name = "idx_partner_companies_corp_code", columnList = "corp_code"),
-        @Index(name = "idx_partner_companies_stock_code", columnList = "stock_code"),
-        @Index(name = "idx_partner_companies_member_id", columnList = "member_id")
-    }
+        name = "partner_companies",
+        indexes = {
+                @Index(name = "idx_partner_companies_corp_code", columnList = "corp_code"),
+                @Index(name = "idx_partner_companies_stock_code", columnList = "stock_code"),
+                @Index(name = "idx_partner_companies_member_id", columnList = "member_id")
+        }
 )
 @Getter
 @Setter
@@ -61,10 +61,8 @@ import lombok.AllArgsConstructor;
 public class PartnerCompany {
 
     @Id
-    @GeneratedValue(generator = "UUID")
-    @GenericGenerator(name = "UUID", strategy = "org.hibernate.id.UUIDGenerator")
-    @Column(name = "id", updatable = false, nullable = false, columnDefinition = "CHAR(36)")
-    private UUID id;
+    @Column(name = "id", updatable = false, nullable = false, columnDefinition = "CHAR(36) CHARACTER SET ascii")
+    private String id;
 
     @Column(name = "member_id", nullable = false)
     private String memberId;
@@ -103,9 +101,6 @@ public class PartnerCompany {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    /**
-     * 엔티티 생성 전 호출되는 메서드
-     */
     @jakarta.persistence.PrePersist
     public void prePersist() {
         this.createdAt = LocalDateTime.now();
@@ -113,11 +108,11 @@ public class PartnerCompany {
         if (this.status == null) {
             this.status = PartnerCompanyStatus.ACTIVE;
         }
+        if (this.id == null) {
+            this.id = UUID.randomUUID().toString();
+        }
     }
 
-    /**
-     * 엔티티 업데이트 전 호출되는 메서드
-     */
     @jakarta.persistence.PreUpdate
     public void preUpdate() {
         this.updatedAt = LocalDateTime.now();

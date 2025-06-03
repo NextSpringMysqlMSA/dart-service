@@ -192,7 +192,15 @@ public class DartApiService {
     @Cacheable(value = CORP_CODE_CACHE_NAME, key = "#queryDto.toString()")
     public Page<DartCorpCode> getAllCorpCodes(CorpCodeQueryDto queryDto) {
         log.info("저장된 기업 코드 조회 요청: {}", queryDto);
-        Pageable pageable = PageRequest.of(queryDto.getPage() - 1, queryDto.getPageSize());
+        
+        // 페이지 번호 검증 및 보정
+        int validPage = Math.max(0, queryDto.getPage());
+        int validPageSize = Math.max(1, Math.min(100, queryDto.getPageSize()));
+        
+        log.debug("DART 기업 코드 조회 - 원본: page={}, pageSize={} -> 보정: page={}, pageSize={}", 
+                queryDto.getPage(), queryDto.getPageSize(), validPage, validPageSize);
+        
+        Pageable pageable = PageRequest.of(validPage, validPageSize);
 
         Specification<DartCorpCode> spec = (root, query, criteriaBuilder) -> {
             List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();

@@ -16,7 +16,7 @@ import com.example.javaversion.database.entity.PartnerCompany;
 import com.example.javaversion.partner.model.PartnerCompanyStatus;
 
 @Repository
-public interface PartnerCompanyRepository extends JpaRepository<PartnerCompany, UUID> {
+public interface PartnerCompanyRepository extends JpaRepository<PartnerCompany, String> {
     
     /**
      * 회사명으로 파트너 회사를 검색합니다. (대소문자 구분 없음)
@@ -81,13 +81,13 @@ public interface PartnerCompanyRepository extends JpaRepository<PartnerCompany, 
      * @return 검색된 파트너 회사 (Optional)
      */
     Optional<PartnerCompany> findByStockCode(String stockCode);
-    
+
     /**
      * ID와 상태로 파트너 회사를 검색합니다.
      *
-     * @param id 파트너 회사 ID
+     * @param id     파트너 회사 ID
      * @param status 파트너 회사 상태
      * @return 검색된 파트너 회사 (Optional)
      */
-    Optional<PartnerCompany> findByIdAndStatus(UUID id, PartnerCompanyStatus status);
+    Optional<PartnerCompany> findByIdAndStatus(String id, PartnerCompanyStatus status);
 }

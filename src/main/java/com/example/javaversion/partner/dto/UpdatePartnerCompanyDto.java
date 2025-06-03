@@ -42,6 +42,10 @@ public class UpdatePartnerCompanyDto {
     @Schema(description = "변경할 파트너사 상태 (예: ACTIVE, INACTIVE). 상태 변경은 신중해야 합니다.", example = "ACTIVE", nullable = true)
     private PartnerCompanyStatus status;
     
+    @Size(max = 10, message = "주식 코드는 최대 10자까지 입력 가능합니다.")
+    @Schema(description = "변경할 주식 코드 (선택사항, DART API에서 자동으로 조회되지만 수동으로도 설정 가능)", example = "005930", nullable = true)
+    private String stockCode;
+    
     // 참고: DART API로부터 자동 업데이트되는 필드(예: stockCode, industry, address, country)는
     // 이 DTO를 통해 직접 수정하지 않습니다. corpCode 변경 시 해당 정보는 자동으로 갱신됩니다.
     // 만약 수동으로 해당 필드를 관리해야 한다면, 별도의 필드를 추가하고 서비스 로직을 수정해야 합니다.
