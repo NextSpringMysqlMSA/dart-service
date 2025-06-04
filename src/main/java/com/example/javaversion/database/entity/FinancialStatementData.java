@@ -67,7 +67,7 @@ public class FinancialStatementData {
     @Column(length = 10)
     private String sjDiv; // 재무제표구분 (BS, IS, CF 등)
 
-    @Column(length = 100)
+    @Column(length = 255)
     private String accountId; // 계정ID (XBRL 표준계정ID)
 
     @Column(nullable = false)
