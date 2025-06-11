@@ -4,9 +4,17 @@ spring:
     username: ${DB_USER}
     password: ${DB_PASS}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 5
+      pool-name: dartServiceHikariPool
+      connection-timeout: 30000
+      idle-timeout: 600000
+      validation-timeout: 5000
+      connection-test-query: SELECT 1
   jpa:
     hibernate:
-      ddl-auto: update  # 또는 create, create-drop, validate, none
+      ddl-auto: update
     show-sql: true
     properties:
       hibernate:
