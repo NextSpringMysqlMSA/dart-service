@@ -22,6 +22,7 @@ import com.example.javaversion.database.repository.DisclosureRepository;
 import com.example.javaversion.database.repository.FinancialStatementDataRepository;
 import com.example.javaversion.database.repository.PartnerCompanyRepository;
 import com.example.javaversion.partner.dto.PartnerCompanyResponseDto;
+import com.example.javaversion.kafka.dto.NewsAnalysisRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
@@ -47,9 +48,13 @@ public class KafkaConsumerService {
     private final CompanyProfileRepository companyProfileRepository;
     private final DisclosureRepository disclosureRepository;
     private final FinancialStatementDataRepository financialStatementDataRepository;
+    private final KafkaProducerService kafkaProducerService;
 
     @Value("${dart.api.key}")
     private String dartApiKey;
+
+    @Value("${kafka.topic.news-keywords}")
+    private String newsKeywordsTopic;
 
     private static final String FS_DIV_OFS = "OFS";
     private static final String[] REPORT_CODES_ANNUAL_QUARTERLY = {"11011", "11012", "11013", "11014"};
@@ -114,16 +119,20 @@ public class KafkaConsumerService {
                     retrieveAndSaveDisclosures(corpCode, companyProfile);
 
                     retrieveAndSaveRecentFinancialStatements(corpCode);
+                    
+                    log.info("파트너사 등록 완료. 뉴스 크롤링은 스케줄러가 주기적으로 처리합니다: corpCode={}", corpCode);
                 } else {
                     log.warn("회사 프로필 정보를 가져오거나 생성할 수 없어 DART 연동 중단: corpCode={}", corpCode);
                 }
             } else {
                 log.warn("파트너사 메시지에 corpCode가 없어 DART 연동을 수행할 수 없습니다: ID={}", partnerCompanyDto.getId());
+                
+                log.info("파트너사 등록 완료. 뉴스 크롤링은 스케줄러가 주기적으로 처리합니다: ID={}", partnerCompanyDto.getId());
             }
 
             log.info("파트너 회사 메시지 처리 완료: ID={}", partnerCompanyDto.getId());
         } catch (Exception e) {
-            log.error("파트너 회사 메시지 처리 중 심각한 오류 발생", e);
+            log.error("파트너 회사 메시지 처리 중 오류 발생: ID={}", partnerCompanyDto.getId(), e);
         }
     }
 
@@ -151,9 +160,9 @@ public class KafkaConsumerService {
                             return Mono.<CompanyProfile>empty();
                         }
                     })
-                    .switchIfEmpty(Mono.defer(() -> {
+                    .switchIfEmpty(Mono.fromSupplier(() -> {
                         log.warn("DART API 응답이 비어있음 (transform - switchIfEmpty): corpCode={}", corpCode);
-                        return Mono.<CompanyProfile>empty();
+                        return null;
                     }))
                     .onErrorResume(e -> {
                         log.error("DART API 처리 중 예외 발생 (transform - onErrorResume): corpCode={}", corpCode, e);

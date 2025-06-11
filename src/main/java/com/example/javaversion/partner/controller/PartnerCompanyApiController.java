@@ -6,6 +6,7 @@
  */
 package com.example.javaversion.partner.controller;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.example.javaversion.partner.dto.CreatePartnerCompanyDto;
 import com.example.javaversion.partner.dto.PaginatedPartnerCompanyResponseDto;
@@ -26,6 +28,8 @@ import com.example.javaversion.partner.dto.UpdatePartnerCompanyDto;
 import com.example.javaversion.partner.dto.FinancialRiskAssessmentDto;
 import com.example.javaversion.partner.service.PartnerCompanyApiService;
 import com.example.javaversion.partner.service.PartnerFinancialRiskService;
+import com.example.javaversion.kafka.dto.NewsAnalysisRequest;
+import com.example.javaversion.kafka.service.KafkaProducerService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -38,6 +42,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -50,6 +55,10 @@ public class PartnerCompanyApiController {
 
     private final PartnerCompanyApiService partnerCompanyApiService;
     private final PartnerFinancialRiskService partnerFinancialRiskService;
+    private final KafkaProducerService kafkaProducerService;
+
+    @Value("${kafka.topic.news-keywords}")
+    private String newsKeywordsTopic;
 
     @GetMapping("/companies/{companyId}")
     @Operation(summary = "파트너사 외부 시스템 회사 정보 조회", description = "파트너사 외부 시스템 API를 통해 특정 회사 정보를 조회합니다. (주의: 현재 서비스의 파트너사 DB와는 별개)")
@@ -222,7 +231,9 @@ public class PartnerCompanyApiController {
     }
     //----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-
+    /**
+     * 파트너사 재무 위험 분석 (DB 기반)
+     */
     @GetMapping("/partner-companies/{partnerCorpCode}/financial-risk")
     @Operation(summary = "파트너사 재무 위험 분석 (DB 기반)", description = "내부 데이터베이스에 저장된 특정 파트너사의 재무제표 데이터를 기반으로 최근 4분기(1년) 기준으로 재무 위험을 분석합니다.")
     @ApiResponses(value = {
@@ -237,16 +248,91 @@ public class PartnerCompanyApiController {
             @Parameter(description = "파트너사명 (결과 표시에 사용, 필수는 아님)")
             @RequestParam(required = false) String partnerName) {
 
-        log.info("파트너사 재무 위험 분석 API 요청: 회사코드={}", partnerCorpCode);
+        log.info("파트너사 재무 위험 분석 요청 - corpCode: {}, partnerName: {}", partnerCorpCode, partnerName);
 
-        // 실제 파트너사명은 partnerCorpCode로 DB 등에서 조회하거나, partnerName 파라미터를 활용할 수 있습니다.
-        // 여기서는 간결성을 위해 partnerName 파라미터를 그대로 사용하거나, corpCode로 대체합니다.
-        String displayName = (partnerName != null && !partnerName.isEmpty()) ? partnerName : partnerCorpCode;
+        try {
+            FinancialRiskAssessmentDto assessment = partnerFinancialRiskService.assessFinancialRisk(partnerCorpCode, partnerName);
+            return ResponseEntity.ok(assessment);
+        } catch (Exception e) {
+            log.error("파트너사 재무 위험 분석 중 오류 발생 - corpCode: {}", partnerCorpCode, e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
+                    "재무 위험 분석 중 오류가 발생했습니다: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 파트너사 뉴스 크롤링 수동 요청 (테스트용)
+     */
+    @PostMapping("/partner-companies/{id}/request-news-analysis")
+    @Operation(summary = "파트너사 뉴스 크롤링 수동 요청 (테스트용)", description = "특정 파트너사에 대한 뉴스 크롤링 및 분석을 수동으로 요청합니다. 개발 및 테스트 목적으로 사용됩니다.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "뉴스 크롤링 요청이 성공적으로 전송되었습니다.",
+                    content = @Content(mediaType = "application/json", schema = @Schema(type = "object", example = "{\"message\": \"뉴스 크롤링 요청이 전송되었습니다.\", \"partnerId\": \"...\", \"companyName\": \"...\"}"))),
+            @ApiResponse(responseCode = "404", description = "해당 파트너사를 찾을 수 없습니다."),
+            @ApiResponse(responseCode = "500", description = "뉴스 크롤링 요청 전송 중 오류 발생")
+    })
+    public ResponseEntity<Map<String, Object>> requestNewsAnalysis(
+            @Parameter(description = "뉴스 크롤링을 요청할 파트너사의 고유 ID (UUID 형식)", required = true, example = "a1b2c3d4-e5f6-7890-1234-567890abcdef")
+            @PathVariable String id) {
 
-        FinancialRiskAssessmentDto assessment =
-                partnerFinancialRiskService.assessFinancialRisk(partnerCorpCode, displayName);
+        log.info("파트너사 뉴스 크롤링 수동 요청 - ID: {}", id);
 
-        return ResponseEntity.ok(assessment);
+        try {
+            PartnerCompanyResponseDto partnerCompany = partnerCompanyApiService.findPartnerCompanyById(id);
+            
+            // 파트너사 정보를 기반으로 뉴스 크롤링 요청 메시지 생성 및 전송
+            // 이는 KafkaConsumerService의 requestNewsAnalysisForPartnerCompany와 동일한 로직
+            String companyName = partnerCompany.getCorpName();
+            if (companyName == null || companyName.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "파트너사 이름이 없어 뉴스 크롤링 요청을 할 수 없습니다.",
+                        "partnerId", id
+                ));
+            }
+
+            // 뉴스 크롤링 요청을 위한 메시지를 partner-company 토픽으로 재발행
+            // (기존 로직을 재사용하기 위해)
+            partnerCompanyApiService.findPartnerCompanyById(id); // 이미 조회했지만 서비스 메서드 호출로 일관성 유지
+            
+            // 🔥 실제 뉴스 크롤링 요청 전송
+            NewsAnalysisRequest newsRequest = NewsAnalysisRequest.builder()
+                    .keyword(companyName.trim())
+                    .periods(List.of("1w", "1m")) // 최근 1주일, 1개월 뉴스
+                    .sources(List.of("naver")) // 네이버 뉴스만
+                    .partnerId(id)
+                    .corpCode(partnerCompany.getCorpCode())
+                    .requestedAt(java.time.LocalDateTime.now().toString())
+                    .build();
+
+            kafkaProducerService.sendMessage(newsKeywordsTopic, companyName, newsRequest)
+                    .whenComplete((result, ex) -> {
+                        if (ex == null) {
+                            log.info("수동 뉴스 크롤링 요청 전송 성공: 회사명={}, 파트너ID={}", companyName, id);
+                        } else {
+                            log.error("수동 뉴스 크롤링 요청 전송 실패: 회사명={}, 파트너ID={}", companyName, id, ex);
+                        }
+                    });
+            
+            Map<String, Object> response = Map.of(
+                    "message", "뉴스 크롤링 요청이 전송되었습니다.",
+                    "partnerId", id,
+                    "companyName", companyName,
+                    "corpCode", partnerCompany.getCorpCode() != null ? partnerCompany.getCorpCode() : "N/A",
+                    "timestamp", java.time.LocalDateTime.now().toString()
+            );
+
+            log.info("파트너사 뉴스 크롤링 수동 요청 완료 - ID: {}, 회사명: {}", id, companyName);
+            return ResponseEntity.ok(response);
+
+        } catch (ResponseStatusException e) {
+            throw e; // 404 등의 기존 예외는 그대로 전파
+        } catch (Exception e) {
+            log.error("파트너사 뉴스 크롤링 수동 요청 중 오류 발생 - ID: {}", id, e);
+            return ResponseEntity.status(500).body(Map.of(
+                    "error", "뉴스 크롤링 요청 중 오류가 발생했습니다: " + e.getMessage(),
+                    "partnerId", id
+            ));
+        }
     }
 
     //----------------------------------------------------------------------------------------------------------------------------------------------------------------------
