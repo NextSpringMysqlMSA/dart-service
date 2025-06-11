@@ -90,4 +90,38 @@ public interface PartnerCompanyRepository extends JpaRepository<PartnerCompany, 
      * @return 검색된 파트너 회사 (Optional)
      */
     Optional<PartnerCompany> findByIdAndStatus(String id, PartnerCompanyStatus status);
+
+    /**
+     * 회사명으로 파트너 회사를 검색합니다. (모든 상태 포함, 대소문자 구분 없음)
+     *
+     * @param companyName 회사명 (부분 일치)
+     * @param pageable 페이지네이션 정보
+     * @return 검색된 파트너 회사 목록 (페이지네이션)
+     */
+    Page<PartnerCompany> findByCompanyNameContainingIgnoreCase(String companyName, Pageable pageable);
+
+    /**
+     * UUID로 파트너 회사를 검색합니다.
+     *
+     * @param id UUID 형태의 파트너 회사 ID
+     * @return 검색된 파트너 회사 (Optional)
+     */
+    Optional<PartnerCompany> findById(String id);
+
+    /**
+     * 회사명과 상태로 파트너 회사를 검색합니다. (정확히 일치, 대소문자 구분 없음)
+     *
+     * @param companyName 회사명 (정확히 일치)
+     * @param status 파트너 회사 상태
+     * @return 검색된 파트너 회사 (Optional)
+     */
+    Optional<PartnerCompany> findByCompanyNameIgnoreCaseAndStatus(String companyName, PartnerCompanyStatus status);
+
+    /**
+     * 회사명으로 활성 상태의 파트너 회사가 존재하는지 확인합니다. (정확히 일치, 대소문자 구분 없음)
+     *
+     * @param companyName 회사명 (정확히 일치)
+     * @return 존재 여부
+     */
+    boolean existsByCompanyNameIgnoreCaseAndStatus(String companyName, PartnerCompanyStatus status);
 }

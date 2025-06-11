@@ -67,6 +67,10 @@ public class PartnerCompanyResponseDto {
     @Schema(description = "파트너사의 주소 정보", example = "서울특별시 강남구 테헤란로 123, 45층", nullable = true)
     private String address;
     
+    @JsonProperty("is_restored")
+    @Schema(description = "파트너사가 복원되었는지 여부 (true: 비활성 상태에서 복원됨, false: 새로 생성됨)", example = "false", nullable = true)
+    private Boolean isRestored;
+    
     /**
      * LocalDateTime을 YYYYMMDD 형식의 문자열로 변환합니다.
      * 

@@ -8,9 +8,9 @@ package com.example.javaversion.partner.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.util.List;
-import java.util.Map;
 
 @Data
 @Builder
@@ -46,6 +46,7 @@ public class FinancialRiskAssessmentDto {
     }
 
     @Data
+    @EqualsAndHashCode(callSuper = true)
     @Schema(description = "번호가 부여된 재무 위험 항목 분석 결과")
     public static class NumberedRiskItemResult extends RiskItemResult {
         @Schema(description = "위험 항목 번호", example = "1")
