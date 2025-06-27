@@ -34,8 +34,9 @@ spring:
 
   # dev 프로파일 Kafka 설정
   kafka:
-    #    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:192.168.0.224:9092}
+#    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:192.168.0.224:9092}
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
+
     consumer:
       group-id: dart-api-group
       auto-offset-reset: earliest

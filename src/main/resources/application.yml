@@ -1,64 +1,8 @@
 spring:
   application:
-    name: dart-api-service
-  profiles:
-    active: ${SPRING_PROFILES_ACTIVE:dev}
+    name: dart-service
+  config:
+    import: optional:configserver:http://localhost:8888
 
 server:
-  port: 8088
-
-# DART API 설정
-dart:
-  api:
-    key: ${DART_API_KEY:}
-    base-url: ${DART_API_BASE_URL:https://opendart.fss.or.kr}
-    cache:
-      companyProfiles:
-        ttl: 3600 # 초 단위
-        maxSize: 1000
-      disclosureSearch:
-        ttl: 3600 # 초 단위
-        maxSize: 500
-      dartCorpCodes:
-        ttl: 86400 # 24시간 (초 단위)
-        maxSize: 10000
-
-# 파트너 API 설정
-partner:
-  api:
-    base-url: ${PARTNER_API_BASE_URL:}
-    client-id: ${PARTNER_API_CLIENT_ID:}
-    client-secret: ${PARTNER_API_CLIENT_SECRET:}
-  news:
-    scheduler:
-      enabled: ${PARTNER_NEWS_SCHEDULER_ENABLED:true} # 스케줄러 활성화 여부
-
-# Kafka 토픽 설정
-kafka:
-  topic:
-    company-profile: dart-company-profile
-    disclosure: dart-disclosure
-    corp-code: dart-corp-code
-    partner-company: partner-company-updated
-    news-keywords: news-keywords
-
-# Resilience4j 설정 추가
-resilience4j:
-  ratelimiter:
-    instances:
-      dartApi:
-        # WebClientService에서 사용한 RateLimiter 이름
-        limitForPeriod: 10 # 기간 내 허용 호출 수
-        limitRefreshPeriod: 1s # 제한 초기화 주기 (예: 1s, 500ms)
-        timeoutDuration: 1s # 요청 대기 시간
-
-# Eureka 설정 (기본)
-eureka:
-  client:
-    enabled: true
-    service-url:
-      defaultZone: ${EUREKA_SERVICE_URL:http://localhost:8761/eureka/}
-    register-with-eureka: true
-    fetch-registry: true
-  instance:
-    prefer-ip-address: true
+  port: 8089
