@@ -1,11 +1,11 @@
-# 🧾 DART 공시 수집 및 협력사 재무 리스크 분석 시스템
+# DART 공시 수집 및 협력사 재무 리스크 분석 시스템
 
 기업의 공시정보를 자동으로 수집하고, 협력사의 재무 데이터를 기반으로 리스크를 분석하여 ESG 평가 및 대응을 지원하는 백엔드 서비스입니다.  
 Kafka 기반 비동기 수신 구조와 외부 OpenAPI 연동을 통해 실시간 분석이 가능합니다.
 
 ---
 
-## 📌 주요 기능
+## 주요 기능
 
 | 기능 영역 | 설명 |
 |-----------|------|
@@ -18,13 +18,7 @@ Kafka 기반 비동기 수신 구조와 외부 OpenAPI 연동을 통해 실시�
 
 ---
 
-## 🔄 시스템 구성도
-
-
-
----
-
-## 🛠️ 기술 스택
+##  기술 스택
 
 - **Spring Boot** + Spring Web
 - **Kafka** (생산자/소비자 구조)
@@ -35,7 +29,7 @@ Kafka 기반 비동기 수신 구조와 외부 OpenAPI 연동을 통해 실시�
 
 ---
 
-## 🔍 핵심 클래스 흐름 요약
+## 핵심 클래스 흐름 요약
 
 ### 1. 기업 정보 검색
 - `DartCompanyController.searchByKeyword()`  
@@ -71,24 +65,3 @@ Kafka 기반 비동기 수신 구조와 외부 OpenAPI 연동을 통해 실시�
   → `PartnerCompanyService.getListOrDetail()`
 
 ---
-
-## 📂 디렉터리 구조 (예시)
-
-```
-📦src
-┣ 📂controller
-┃ ┣ 📜DartCompanyController.java
-┃ ┣ 📜PartnerCompanyController.java
-┣ 📂service
-┃ ┣ 📜DartCompanyService.java
-┃ ┣ 📜PartnerCompanyService.java
-┃ ┣ 📜KafkaConsumerService.java
-┃ ┣ 📜KafkaProducerService.java
-┣ 📂external
-┃ ┣ 📜DartOpenApiDisclosureService.java
-┃ ┣ 📜DartOpenApiFinancialStatementService.java
-┃ ┣ 📜WebClientService.java
-┣ 📂dto
-┃ ┗ 📜FinancialRiskAssessmentDto.java
-
-````
